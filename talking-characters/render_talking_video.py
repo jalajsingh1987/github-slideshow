@@ -26,7 +26,7 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 # Mouth centers on the original 1536x1024 painting (tuned on overlays).
 PIP = {
-    "mouth": (456, 462),
+    "mouth": (488, 444),
     "eyes": ((400, 372), (455, 370)),
     "color": (232, 176, 128),
     "lip": (176, 86, 78),
@@ -36,7 +36,7 @@ PIP = {
     "tld": "co.uk",
 }
 JUN = {
-    "mouth": (1088, 462),
+    "mouth": (1068, 444),
     "eyes": ((1095, 372), (1155, 370)),
     "color": (176, 112, 72),
     "lip": (132, 62, 58),
@@ -189,38 +189,39 @@ def draw_mouth(layer: Image.Image, cx: int, cy: int, kind: str, cfg: dict, open_
         return
     overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)
-    # Cover the painted closed smile so visemes replace it instead of sitting on top.
+    # Cover the painted closed smile. cy is the closed-mouth line; visemes open downward.
     cover = (*cfg["color"], 235)
-    d.ellipse([cx - 22, cy - 10, cx + 22, cy + 12], fill=cover)
+    d.ellipse([cx - 26, cy - 7, cx + 26, cy + 8], fill=cover)
     lip = (*cfg["lip"], 230)
     cavity = (42, 18, 16, 235)
     teeth = (245, 236, 220, 220)
+    top = cy - 2
 
     if kind == "closed" or kind == "M":
-        w, h = 18, 4
+        w, h = 16, 3
         d.ellipse([cx - w, cy - h, cx + w, cy + h], fill=lip)
     elif kind == "wide" or kind == "E":
-        w, h = int(22 + 6 * open_amt), int(6 + 7 * open_amt)
-        d.ellipse([cx - w, cy - h, cx + w, cy + h], fill=lip)
-        d.ellipse([cx - w + 5, cy - h + 3, cx + w - 5, cy + h - 2], fill=cavity)
-        d.rectangle([cx - w + 7, cy - h + 3, cx + w - 7, cy - 1], fill=teeth)
+        w, h = int(20 + 6 * open_amt), int(6 + 8 * open_amt)
+        d.ellipse([cx - w, top, cx + w, top + 2 * h], fill=lip)
+        d.ellipse([cx - w + 5, top + 4, cx + w - 5, top + 2 * h - 2], fill=cavity)
+        d.rectangle([cx - w + 7, top + 4, cx + w - 7, top + 9], fill=teeth)
     elif kind == "round" or kind == "O":
         r = int(8 + 7 * open_amt)
-        d.ellipse([cx - r, cy - r, cx + r, cy + r + 2], fill=lip)
-        d.ellipse([cx - r + 4, cy - r + 3, cx + r - 4, cy + r], fill=cavity)
+        d.ellipse([cx - r, top, cx + r, top + 2 * r + 4], fill=lip)
+        d.ellipse([cx - r + 4, top + 4, cx + r - 4, top + 2 * r], fill=cavity)
     elif kind == "small" or kind == "U":
         r = int(6 + 5 * open_amt)
-        d.ellipse([cx - r - 1, cy - r + 1, cx + r + 1, cy + r + 2], fill=lip)
-        d.ellipse([cx - r + 3, cy - r + 3, cx + r - 3, cy + r], fill=cavity)
+        d.ellipse([cx - r, top, cx + r, top + 2 * r + 3], fill=lip)
+        d.ellipse([cx - r + 3, top + 3, cx + r - 3, top + 2 * r], fill=cavity)
     elif kind == "teeth" or kind == "F":
-        w, h = 20, 7
-        d.ellipse([cx - w, cy - 3, cx + w, cy + h], fill=lip)
-        d.rectangle([cx - 12, cy - 1, cx + 12, cy + 3], fill=teeth)
+        w, h = 18, 8
+        d.ellipse([cx - w, top, cx + w, top + h + 4], fill=lip)
+        d.rectangle([cx - 11, top + 2, cx + 11, top + 6], fill=teeth)
     else:  # open / A
-        w, h = int(16 + 7 * open_amt), int(7 + 11 * open_amt)
-        d.ellipse([cx - w, cy - h, cx + w, cy + h + 1], fill=lip)
-        d.ellipse([cx - w + 5, cy - h + 3, cx + w - 5, cy + h - 1], fill=cavity)
-        d.rectangle([cx - w + 7, cy - h + 3, cx + w - 7, cy - h + 8], fill=teeth)
+        w, h = int(15 + 6 * open_amt), int(8 + 10 * open_amt)
+        d.ellipse([cx - w, top, cx + w, top + 2 * h], fill=lip)
+        d.ellipse([cx - w + 5, top + 4, cx + w - 5, top + 2 * h - 2], fill=cavity)
+        d.rectangle([cx - w + 6, top + 4, cx + w - 6, top + 10], fill=teeth)
 
     overlay = overlay.filter(ImageFilter.GaussianBlur(0.6))
     layer.alpha_composite(overlay)
