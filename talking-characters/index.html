@@ -1,8 +1,13 @@
+---
+layout: null
+permalink: /talking-characters/
+---
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Pip & Jun — persistent talking characters</title>
     <style>
       :root {
@@ -24,13 +29,13 @@
         color: var(--ink);
         display: grid;
         place-items: center;
-        padding: 32px 16px;
+        padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
       }
       main {
         width: min(960px, 100%);
         background: var(--card);
         border-radius: 24px;
-        padding: 28px;
+        padding: 24px 20px;
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
       }
       h1 {
@@ -38,12 +43,41 @@
         letter-spacing: 0.02em;
         margin: 0 0 8px;
       }
-      p { color: var(--muted); line-height: 1.5; margin: 0 0 20px; }
+      p { color: var(--muted); line-height: 1.5; margin: 0 0 16px; }
+      .stage {
+        position: relative;
+        background: #000;
+        border-radius: 16px;
+        overflow: hidden;
+      }
       video {
         width: 100%;
-        border-radius: 16px;
-        background: #000;
+        height: auto;
+        max-height: 70vh;
         display: block;
+        background: #000;
+        vertical-align: top;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      a.button {
+        display: inline-block;
+        padding: 12px 16px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #1a140e;
+        font-family: system-ui, sans-serif;
+        font-weight: 650;
+        text-decoration: none;
+      }
+      a.ghost {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
       }
       .meta {
         display: flex;
@@ -62,14 +96,25 @@
         Same two characters for the whole clip — mint-haired Pip in the mustard sweater,
         navy-haired Jun in the denim jacket. Mouth shapes change while they take turns speaking.
       </p>
-      <video controls playsinline poster="assets/characters-master.png">
-        <source src="out/pip-and-jun-talking.mp4" type="video/mp4" />
-        Your browser cannot play this video.
-      </video>
+      <div class="stage">
+        <video
+          controls
+          playsinline
+          webkit-playsinline
+          x5-playsinline
+          preload="metadata"
+          poster="assets/characters-master.png"
+        >
+          <source src="out/pip-and-jun-talking.mp4" type="video/mp4" />
+        </video>
+      </div>
+      <div class="actions">
+        <a class="button" href="out/pip-and-jun-talking.mp4" download="pip-and-jun-talking.mp4">Save the video</a>
+        <a class="button ghost" href="out/pip-and-jun-talking.mp4">Open the MP4</a>
+      </div>
       <div class="meta">
-        <span>Persistent still</span>
-        <span>Viseme lip-flap</span>
-        <span>Spoken lines + captions</span>
+        <span>H.264 Main + AAC 44.1 kHz</span>
+        <span>Phone-safe MP4</span>
       </div>
     </main>
   </body>

@@ -18,6 +18,8 @@ ASSET = ROOT / "assets" / "characters-master.png"
 OUT_DIR = ROOT / "out"
 FPS = 24
 WIDTH, HEIGHT = 1920, 1080
+# iOS/Android HTML5 players reject 24 kHz mono AAC and High-profile H.264.
+AUDIO_RATE = 44100
 
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -140,7 +142,7 @@ def pitch_shift(src: Path, dst: Path, factor: float) -> None:
             "-i",
             str(src),
             "-filter:a",
-            f"asetrate=24000*{factor},aresample=24000,atempo={tempo}",
+            f"asetrate={AUDIO_RATE}*{factor},aresample={AUDIO_RATE},atempo={tempo}",
             str(dst),
         ],
         stdout=subprocess.DEVNULL,
@@ -379,15 +381,42 @@ def concat_audio(clips: list[tuple[Path, float, float]], total: float, dest: Pat
     parts = []
     filter_bits = []
     cmd = ["ffmpeg", "-y"]
-    cmd += ["-f", "lavfi", "-t", f"{total:.3f}", "-i", "anullsrc=r=24000:cl=mono"]
+    cmd += [
+        "-f",
+        "lavfi",
+        "-t",
+        f"{total:.3f}",
+        "-i",
+        f"anullsrc=r={AUDIO_RATE}:cl=stereo",
+    ]
     for i, (path, _start, _dur) in enumerate(clips, start=1):
         cmd += ["-i", str(path)]
-    mix = ["[0:a]volume=0[base]"]
+    mix = ["[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0[base]"]
     for i, (path, start, _dur) in enumerate(clips, start=1):
-        mix.append(f"[{i}:a]adelay={int(start * 1000)}|{int(start * 1000)},volume=1[a{i}]")
+        delay = int(start * 1000)
+        mix.append(
+            f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+            f"adelay={delay}|{delay},volume=1[a{i}]"
+        )
     inputs = "[base]" + "".join(f"[a{i}]" for i in range(1, len(clips) + 1))
     mix.append(f"{inputs}amix=inputs={len(clips)+1}:dropout_transition=0:normalize=0[out]")
-    cmd += ["-filter_complex", ";".join(mix), "-map", "[out]", "-c:a", "aac", "-b:a", "160k", str(dest)]
+    cmd += [
+        "-filter_complex",
+        ";".join(mix),
+        "-map",
+        "[out]",
+        "-c:a",
+        "aac",
+        "-profile:a",
+        "aac_low",
+        "-ar",
+        str(AUDIO_RATE),
+        "-ac",
+        "2",
+        "-b:a",
+        "128k",
+        str(dest),
+    ]
     subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -477,15 +506,27 @@ def render(preview: bool = False) -> Path:
                 str(audio_path),
                 "-c:v",
                 "libx264",
+                "-profile:v",
+                "main",
+                "-level",
+                "4.0",
                 "-pix_fmt",
                 "yuv420p",
                 "-crf",
                 "20",
                 "-c:a",
                 "aac",
+                "-profile:a",
+                "aac_low",
+                "-ar",
+                str(AUDIO_RATE),
+                "-ac",
+                "2",
                 "-shortest",
                 "-movflags",
                 "+faststart",
+                "-brand",
+                "mp42",
                 str(mp4),
             ],
             stdout=subprocess.DEVNULL,
