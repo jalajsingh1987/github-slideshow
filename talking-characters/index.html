@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pip & Jun — persistent talking characters</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #1a140e;
+        --card: #2a2118;
+        --ink: #f7efe4;
+        --muted: #cbbba6;
+        --accent: #e2b15a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(1200px 600px at 10% 0%, #3a2a18 0%, transparent 55%),
+          var(--bg);
+        color: var(--ink);
+        display: grid;
+        place-items: center;
+        padding: 32px 16px;
+      }
+      main {
+        width: min(960px, 100%);
+        background: var(--card);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      }
+      h1 {
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin: 0 0 8px;
+      }
+      p { color: var(--muted); line-height: 1.5; margin: 0 0 20px; }
+      video {
+        width: 100%;
+        border-radius: 16px;
+        background: #000;
+        display: block;
+      }
+      .meta {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+        font-size: 0.95rem;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Pip &amp; Jun</h1>
+      <p>
+        Same two characters for the whole clip — mint-haired Pip in the mustard sweater,
+        navy-haired Jun in the denim jacket. Mouth shapes change while they take turns speaking.
+      </p>
+      <video controls playsinline poster="assets/characters-master.png">
+        <source src="out/pip-and-jun-talking.mp4" type="video/mp4" />
+        Your browser cannot play this video.
+      </video>
+      <div class="meta">
+        <span>Persistent still</span>
+        <span>Viseme lip-flap</span>
+        <span>Spoken lines + captions</span>
+      </div>
+    </main>
+  </body>
+</html>
