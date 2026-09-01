@@ -26,7 +26,7 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 # Mouth centers on the original 1536x1024 painting (tuned on overlays).
 PIP = {
-    "mouth": (488, 444),
+    "mouth": (470, 442),
     "eyes": ((400, 372), (455, 370)),
     "color": (232, 176, 128),
     "lip": (176, 86, 78),
@@ -36,7 +36,7 @@ PIP = {
     "tld": "co.uk",
 }
 JUN = {
-    "mouth": (1068, 444),
+    "mouth": (1048, 436),
     "eyes": ((1095, 372), (1155, 370)),
     "color": (176, 112, 72),
     "lip": (132, 62, 58),
