@@ -26,7 +26,7 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 # Mouth centers on the original 1536x1024 painting (tuned on overlays).
 PIP = {
-    "mouth": (470, 442),
+    "mouth": (476, 438),
     "eyes": ((400, 372), (455, 370)),
     "color": (232, 176, 128),
     "lip": (176, 86, 78),
@@ -130,11 +130,48 @@ def ffprobe_duration(path: Path) -> float:
     return float(out)
 
 
+def ffprobe_sample_rate(path: Path) -> int:
+    out = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=sample_rate",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        text=True,
+    ).strip()
+    return int(float(out))
+
+
 def pitch_shift(src: Path, dst: Path, factor: float) -> None:
-    # asetrate changes pitch; atempo restores duration.
-    tempo = 1.0 / factor
-    # atempo only accepts 0.5–2.0
-    tempo = min(2.0, max(0.5, tempo))
+    """Change pitch without the chipmunk effect from a mismatched sample rate.
+
+    gTTS writes ~24 kHz MP3. Pitch must use that source rate, then resample
+    to 44.1 kHz stereo so phones will play the file.
+    """
+    src_rate = ffprobe_sample_rate(src)
+    # rubberband keeps duration; asetrate+atempo is the fallback.
+    rubber = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(src),
+        "-filter:a",
+        f"rubberband=pitch={factor}:channels=1,aformat=sample_rates={AUDIO_RATE}:channel_layouts=stereo",
+        str(dst),
+    ]
+    try:
+        subprocess.check_call(rubber, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    except subprocess.CalledProcessError:
+        pass
+    tempo = min(2.0, max(0.5, 1.0 / factor))
     subprocess.check_call(
         [
             "ffmpeg",
@@ -142,7 +179,8 @@ def pitch_shift(src: Path, dst: Path, factor: float) -> None:
             "-i",
             str(src),
             "-filter:a",
-            f"asetrate={AUDIO_RATE}*{factor},aresample={AUDIO_RATE},atempo={tempo}",
+            f"asetrate={src_rate}*{factor},aresample={AUDIO_RATE},atempo={tempo},"
+            f"aformat=channel_layouts=stereo",
             str(dst),
         ],
         stdout=subprocess.DEVNULL,
