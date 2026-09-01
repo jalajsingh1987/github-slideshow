@@ -12,6 +12,7 @@ from pathlib import Path
 
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 ASSET = ROOT / "assets" / "characters-master.png"
@@ -24,7 +25,11 @@ AUDIO_RATE = 44100
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-# Mouth centers on the original 1536x1024 painting (tuned on overlays).
+# Lower-face search boxes on the original painting (x0,y0,x1,y1).
+PIP_FACE = (320, 360, 560, 520)
+JUN_FACE = (1000, 370, 1260, 530)
+
+# Mouth centers — replaced at render time by detect_smile_center().
 PIP = {
     "mouth": (476, 438),
     "eyes": ((400, 372), (455, 370)),
@@ -215,6 +220,84 @@ def map_pt(pt: tuple[int, int], master: Image.Image) -> tuple[int, int]:
     return int(nx), int(ny)
 
 
+def detect_smile_center(rgb: np.ndarray, box: tuple[int, int, int, int]) -> dict | None:
+    """Find the painted closed-mouth stroke in a lower-face box.
+
+    These characters use a 1–3px dark smile on skin, not photographic lips, so
+    generic face-mesh models miss them. For each row in the middle of the box
+    we look for a dark run sandwiched by brighter skin above and below, merge
+    nearby corners of the same smile, and take the centroid of the best stroke.
+    """
+    x0, y0, x1, y1 = box
+    rgb = rgb.astype(np.float32)
+    lum = 0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2]
+    merge_gap, min_w, max_w = 42, 18, 110
+    best = None
+    for y in range(y0 + int((y1 - y0) * 0.28), y0 + int((y1 - y0) * 0.72)):
+        row = lum[y, x0:x1]
+        med = np.median(lum[max(0, y - 5) : y + 6, x0:x1], axis=0)
+        dark = np.clip(med - row, 0, None)
+        above = lum[max(0, y - 8), x0:x1]
+        below = lum[min(lum.shape[0] - 1, y + 8), x0:x1]
+        sandwich = (above > row + 6) & (below > row + 6) & (np.abs(above - below) < 35)
+        score = dark * sandwich
+        on = score > 8
+        runs = []
+        i, n = 0, len(on)
+        while i < n:
+            if on[i]:
+                j = i
+                while j < n and on[j]:
+                    j += 1
+                runs.append([i, j, float(score[i:j].sum())])
+                i = j
+            else:
+                i += 1
+        if not runs:
+            continue
+        merged = [runs[0]]
+        for a, b, s in runs[1:]:
+            if a - merged[-1][1] <= merge_gap:
+                merged[-1][1] = b
+                merged[-1][2] += s
+            else:
+                merged.append([a, b, s])
+        for a, b, s in merged:
+            w = b - a
+            if w < min_w or w > max_w:
+                continue
+            xs = np.arange(a, b)
+            wts = score[a:b] + 1e-6
+            cx = x0 + int(np.average(xs, weights=wts))
+            quality = s * np.sqrt(w)
+            cand = (quality, cx, y, x0 + a, x0 + b)
+            if best is None or quality > best[0]:
+                best = cand
+    if best is None:
+        return None
+    return {"xy": (best[1], best[2]), "span": (best[3], best[4])}
+
+
+def locate_mouths(master: Image.Image) -> None:
+    rgb = np.array(master.convert("RGB"))
+    pip = detect_smile_center(rgb, PIP_FACE)
+    jun = detect_smile_center(rgb, JUN_FACE)
+    if pip:
+        a, b = pip["span"]
+        # 3/4 facing right: sit on the smile, slightly toward the visible right.
+        PIP["mouth"] = (a + int((b - a) * 0.52), pip["xy"][1])
+        PIP["smile_w"] = b - a
+        print(f"detected Pip smile at {PIP['mouth']} span {pip['span']}")
+    if jun:
+        a, b = jun["span"]
+        # 3/4 facing left: sit on the smile, slightly toward the visible left.
+        JUN["mouth"] = (a + int((b - a) * 0.30), jun["xy"][1])
+        JUN["smile_w"] = b - a
+        print(f"detected Jun smile at {JUN['mouth']} span {jun['span']}")
+    if not pip or not jun:
+        print("warning: smile detector missed a face; using fallback coords")
+
+
 def ellipse_mask(size: tuple[int, int], blur: float) -> Image.Image:
     m = Image.new("L", size, 0)
     d = ImageDraw.Draw(m)
@@ -227,41 +310,39 @@ def draw_mouth(layer: Image.Image, cx: int, cy: int, kind: str, cfg: dict, open_
         return
     overlay = Image.new("RGBA", layer.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)
-    # Cover the painted closed smile. cy is the closed-mouth line; visemes open downward.
-    cover = (*cfg["color"], 235)
-    d.ellipse([cx - 26, cy - 7, cx + 26, cy + 8], fill=cover)
-    lip = (*cfg["lip"], 230)
+    # Center visemes on the detected smile line so they replace it, not sit on the chin.
+    smile_w = max(14, int(cfg.get("smile_w", 32) * WIDTH / 1536 * 0.42))
+    cover = (*cfg["color"], 240)
+    d.ellipse([cx - smile_w - 4, cy - 5, cx + smile_w + 4, cy + 6], fill=cover)
+    lip = (*cfg["lip"], 235)
     cavity = (42, 18, 16, 235)
     teeth = (245, 236, 220, 220)
-    top = cy - 2
 
     if kind == "closed" or kind == "M":
-        w, h = 16, 3
-        d.ellipse([cx - w, cy - h, cx + w, cy + h], fill=lip)
+        d.ellipse([cx - smile_w, cy - 3, cx + smile_w, cy + 3], fill=lip)
     elif kind == "wide" or kind == "E":
-        w, h = int(20 + 6 * open_amt), int(6 + 8 * open_amt)
-        d.ellipse([cx - w, top, cx + w, top + 2 * h], fill=lip)
-        d.ellipse([cx - w + 5, top + 4, cx + w - 5, top + 2 * h - 2], fill=cavity)
-        d.rectangle([cx - w + 7, top + 4, cx + w - 7, top + 9], fill=teeth)
+        h = int(5 + 6 * open_amt)
+        d.ellipse([cx - smile_w - 4, cy - h, cx + smile_w + 4, cy + h], fill=lip)
+        d.ellipse([cx - smile_w, cy - h + 3, cx + smile_w, cy + h - 2], fill=cavity)
+        d.rectangle([cx - smile_w + 2, cy - h + 3, cx + smile_w - 2, cy - 1], fill=teeth)
     elif kind == "round" or kind == "O":
-        r = int(8 + 7 * open_amt)
-        d.ellipse([cx - r, top, cx + r, top + 2 * r + 4], fill=lip)
-        d.ellipse([cx - r + 4, top + 4, cx + r - 4, top + 2 * r], fill=cavity)
+        r = int(7 + 6 * open_amt)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=lip)
+        d.ellipse([cx - r + 4, cy - r + 4, cx + r - 4, cy + r - 3], fill=cavity)
     elif kind == "small" or kind == "U":
-        r = int(6 + 5 * open_amt)
-        d.ellipse([cx - r, top, cx + r, top + 2 * r + 3], fill=lip)
-        d.ellipse([cx - r + 3, top + 3, cx + r - 3, top + 2 * r], fill=cavity)
+        r = int(5 + 4 * open_amt)
+        d.ellipse([cx - r - 2, cy - r + 1, cx + r + 2, cy + r], fill=lip)
+        d.ellipse([cx - r + 2, cy - r + 3, cx + r - 2, cy + r - 2], fill=cavity)
     elif kind == "teeth" or kind == "F":
-        w, h = 18, 8
-        d.ellipse([cx - w, top, cx + w, top + h + 4], fill=lip)
-        d.rectangle([cx - 11, top + 2, cx + 11, top + 6], fill=teeth)
+        d.ellipse([cx - smile_w, cy - 3, cx + smile_w, cy + 6], fill=lip)
+        d.rectangle([cx - smile_w + 2, cy - 1, cx + smile_w - 2, cy + 3], fill=teeth)
     else:  # open / A
-        w, h = int(15 + 6 * open_amt), int(8 + 10 * open_amt)
-        d.ellipse([cx - w, top, cx + w, top + 2 * h], fill=lip)
-        d.ellipse([cx - w + 5, top + 4, cx + w - 5, top + 2 * h - 2], fill=cavity)
-        d.rectangle([cx - w + 6, top + 4, cx + w - 6, top + 10], fill=teeth)
+        h = int(6 + 8 * open_amt)
+        d.ellipse([cx - smile_w, cy - h, cx + smile_w, cy + h], fill=lip)
+        d.ellipse([cx - smile_w + 4, cy - h + 3, cx + smile_w - 4, cy + h - 3], fill=cavity)
+        d.rectangle([cx - smile_w + 5, cy - h + 3, cx + smile_w - 5, cy - 1], fill=teeth)
 
-    overlay = overlay.filter(ImageFilter.GaussianBlur(0.6))
+    overlay = overlay.filter(ImageFilter.GaussianBlur(0.5))
     layer.alpha_composite(overlay)
 
 
@@ -463,6 +544,7 @@ def render(preview: bool = False) -> Path:
     if not ASSET.exists():
         raise SystemExit(f"Missing {ASSET}")
     master = Image.open(ASSET).convert("RGB")
+    locate_mouths(master)
     scene = crop_scene(master)
     maps = {}
     for who, cfg in (("pip", PIP), ("jun", JUN)):
@@ -491,6 +573,12 @@ def render(preview: bool = False) -> Path:
             # One talking frame per line for alignment checks.
             preview_dir = OUT_DIR / "preview"
             preview_dir.mkdir(exist_ok=True)
+            dbg = master.copy()
+            dr = ImageDraw.Draw(dbg)
+            for cfg, col in ((PIP, (255, 60, 40)), (JUN, (40, 200, 90))):
+                x, y = cfg["mouth"]
+                dr.ellipse([x - 12, y - 8, x + 12, y + 8], outline=col, width=3)
+            dbg.save(preview_dir / "detected-smiles.png")
             for i, item in enumerate(timeline):
                 mid = (item["start"] + item["end"]) / 2
                 active = {"who": item["who"], "text": item["text"], "viseme": "A"}
